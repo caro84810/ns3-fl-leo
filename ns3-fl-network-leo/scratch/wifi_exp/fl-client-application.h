@@ -115,6 +115,12 @@ namespace ns3
      * \param available  TxAvailable
      */
     void HandleReadyToSend (Ptr <Socket> sock, uint32_t available);
+    
+    /*****udp的方法集*****/
+    void HandleReadUDP(Ptr<Socket> socket);
+    void SendTrainedModelUDP();
+    void SendModelChunkUDP();
+    void RetryConnection();
 
     //Set by Setup
     Ptr <Socket> m_socket;                    //!< Socket to associate with client

@@ -1,23 +1,3 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
-/*
- * Copyright (c) 2022 Emily Ekaireb
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * Author: Emily Ekaireb <eekaireb@ucsd.edu>
- */
-
 #include "fl-client-application.h"
 
 #include "ns3/internet-module.h"
@@ -26,10 +6,6 @@
 namespace ns3 {
     NS_LOG_COMPONENT_DEFINE ("ClientApplication");
     NS_OBJECT_ENSURE_REGISTERED (ClientApplication);
-
-
-
-
     ClientApplication::ClientApplication()
             : m_socket(0),
               m_peer(),
@@ -235,8 +211,7 @@ namespace ns3 {
 
     void
     ClientApplication::StartApplication(void) {
-
-
+    NS_LOG_UNCOND("===== 函數名: " << __FUNCTION__ << " =====");
         m_model.SetDeviceType("RaspberryPi");
         m_model.SetDataSize(DoubleValue(m_bytesModel));
         m_model.SetPacketSize(DoubleValue(m_packetSize));
@@ -244,22 +219,46 @@ namespace ns3 {
         m_model.SetApplication("kNN", DoubleValue(m_packetSize));
 
 
+       // 檢查 socket 類型
+    bool isUdp = (m_socket->GetSocketType() == Socket::NS3_SOCK_DGRAM);
+    
+    if (!isUdp) {
+        // TCP socket 設置
         m_socket->SetCloseCallbacks(
                 MakeCallback(&ClientApplication::NormalClose, this),
                 MakeCallback(&ClientApplication::ErrorClose, this));
         m_socket->SetConnectCallback(
                 MakeCallback(&ClientApplication::ConnectionSucceeded, this),
                 MakeCallback(&ClientApplication::ConnectionFailed, this));
-
-
-
+        
         m_socket->Bind();
         m_socket->Connect(m_peer);
 
-        m_timeBeginReceivingModelFromServer = Simulator::Now();
-
-        m_socket->SetRecvCallback(MakeCallback(&ClientApplication::HandleRead, this));
-    }
+        /******更加詳細的去處理UDP的SOCKET*******/
+    } else {
+        // UDP socket 設置
+        NS_LOG_UNCOND("UDP Client APP 設置");
+        m_socket->Bind();
+        
+         // 使用UDP專用回調
+         m_socket->SetRecvCallback(MakeCallback(&ClientApplication::HandleReadUDP, this));
+        
+         // 重置計數器
+         m_bytesModelReceived = 0;
+         m_bytesModelToReceive = m_bytesModel;
+         m_timeBeginReceivingModelFromServer = Simulator::Now();
+         
+         NS_LOG_UNCOND("UDP客戶端準備發送初始包");
+          // 發送非常小的初始包
+        uint8_t initBuffer[4] = {0x49, 0x4E, 0x49, 0x54}; // "INIT"
+        Ptr<Packet> initPacket = Create<Packet>(initBuffer, 4);
+        
+        int sent = m_socket->SendTo(initPacket, 0, m_peer);
+        NS_LOG_UNCOND("UDP客戶端發送初始包結果: " << sent << " bytes");
+        
+          }
+      Simulator::Schedule(MilliSeconds(100), &ClientApplication::RetryConnection, this);
+      }
 
     void
     ClientApplication::StopApplication(void) {
@@ -273,5 +272,105 @@ namespace ns3 {
             //m_socket->Close ();
         }
     }
+    
+    /******增加udp處理模式******/
+
+    void ClientApplication::HandleReadUDP(Ptr<Socket> socket) {
+    //NS_LOG_UNCOND("===== 函數名: " << __FUNCTION__ << " =====");
+        Ptr<Packet> packet;
+        Address from;
+        
+        while ((packet = socket->RecvFrom(from))) {
+            if (packet->GetSize() == 0) break;
+            
+            // 詳細日誌記錄
+            //NS_LOG_UNCOND("UDP接收了 " << packet->GetSize() << " 字節, 總計: " 
+                        //<< (m_bytesModelReceived + packet->GetSize()) << "/" << m_bytesModel);
+            
+            if (m_bytesModelReceived == 0) {
+                m_timeBeginReceivingModelFromServer = Simulator::Now();
+            }
+            
+            m_bytesModelReceived += packet->GetSize();
+            m_bytesModelToReceive -= packet->GetSize();
+            
+            // 檢查是否接收完整模型
+            if (m_bytesModelToReceive <= 0) {
+            
+                // 發送確認包
+                uint8_t ackBuffer[8] = {0xAC, 0xAC, 0xAC, 0xAC, 0xAC, 0xAC, 0xAC, 0xAC};
+                Ptr<Packet> ackPacket = Create<Packet>(ackBuffer, 8);
+                m_socket->SendTo(ackPacket, 0, m_peer);
+                NS_LOG_UNCOND("客戶端發送ACK確認完整接收模型,準備訓練");
+                
+                m_timeEndReceivingModelFromServer = Simulator::Now();
+                
+                // 計算訓練延遲
+                auto energy = FLEnergy();
+                energy.SetDeviceType("400");
+                energy.SetLearningModel("CIFAR-10");
+                energy.SetEpochs(5.0);
+                double compTime = energy.CalcComputationTime();
+                
+                NS_LOG_UNCOND("預計訓練時間: " << compTime << " 秒");
+                Simulator::Schedule(Seconds(compTime), &ClientApplication::SendTrainedModelUDP, this);
+            }
+        }
+    }
+    
+    // 添加訓練後發送模型的函數
+    void ClientApplication::SendTrainedModelUDP() {
+        NS_LOG_UNCOND("===== 客戶端開始發送訓練後模型 =====");
+        NS_LOG_UNCOND("目標地址: " << InetSocketAddress::ConvertFrom(m_peer).GetIpv4());
+        NS_LOG_UNCOND("模型大小: " << m_bytesModel << " 字節");
+        
+        // 設置要發送的模型大小
+        m_bytesModelToSend = m_bytesModel;
+        m_bytesSent = 0;
+        
+        // 開始分包發送
+        SendModelChunkUDP();
+    }
+    
+    void ClientApplication::SendModelChunkUDP() {
+        if (m_bytesModelToSend <= 0) {
+            NS_LOG_UNCOND("模型發送完成");
+            return;
+        }
+        
+        uint32_t chunkSize = std::min(m_bytesModelToSend, m_packetSize);
+        Ptr<Packet> packet = Create<Packet>(chunkSize);
+        
+        // 發送數據包
+        int sent = m_socket->SendTo(packet, 0, m_peer);
+        
+        if (sent > 0) {
+            m_bytesSent += sent;
+            m_bytesModelToSend -= sent;
+            
+            NS_LOG_UNCOND("已發送 " << m_bytesSent << "/" << m_bytesModel 
+                       << " 字節, 剩餘 " << m_bytesModelToSend);
+            
+            // 安排發送下一個數據包
+            Time nextTime(Seconds((chunkSize * 8) / static_cast<double>(m_dataRate.GetBitRate())));
+            Simulator::Schedule(nextTime, &ClientApplication::SendModelChunkUDP, this);
+        }else{
+            NS_LOG_UNCOND("發送失敗，5ms後重試");
+            Simulator::Schedule(MilliSeconds(5), &ClientApplication::SendModelChunkUDP, this);
+        }
+    }
+    
+    void ClientApplication::RetryConnection() {
+    if (m_bytesModelReceived == 0) {
+        NS_LOG_UNCOND("重試連接服務器...");
+        // 重新發送初始包
+        uint8_t initBuffer[10] = {0x49, 0x4E, 0x49, 0x54};
+        Ptr<Packet> initPacket = Create<Packet>(initBuffer, 10);
+        m_socket->SendTo(initPacket, 0, m_peer);
+        
+        // 繼續嘗試，直到收到數據
+        Simulator::Schedule(MilliSeconds(100), &ClientApplication::RetryConnection, this);
+    }
+}
 
 }

@@ -128,69 +128,6 @@ namespace ns3 {
         bool m_dropOut;                     //!< Indicates if client has dropped out of round
     };
 
-    /**
-   * \ingroup fl-client-session-manager
-   * \brief Manages the client session
-   */
-    class ClientSessionManager {
-    public:
-        /**
-        * \brief Construct client session manager
-        * \param inn    map of < client ids, client sessions >
-        */
-        ClientSessionManager(std::map<int, std::shared_ptr<ClientSession> > &inn);
-
-        /**
-        * \brief Get client id from client address
-        * \param address  Client address
-        * \return  Client id
-        */
-        int ResolveToId(ns3::Ipv4Address &address);
-
-        /**
-        * \brief Increment cycle count (async) from server
-        * \param address  Client socket
-        */
-        void IncrementCycleCountFromServer(ns3::Ptr<ns3::Socket> socket);
-
-        /**
-        * \brief Returns if all of the clients finished 1 cycle (async)
-        * \return  True if all clients finished a cycle
-        */
-        bool HasAllClientsFinishedFirstCycle();
-
-        /**
-        * \brief Get cycle of client in async round
-        * \param socket  Client socket to check round for
-        */
-        int GetRound(ns3::Ptr<ns3::Socket> socket);
-
-        /**
-        * \brief Get client id from client socket
-        * \param socket  Client socket
-        * \return  Client id
-        */
-        int ResolveToIdFromServer(ns3::Ptr<ns3::Socket> socket);
-
-        /**
-        * \brief Close client socket
-        */
-        void Close();
-
-        /**
-        * \brief Get client address from client id
-        * \param id  Client id
-        * \return  Client address
-        */
-        ns3::Ipv4Address ResolveToAddress(int id);
-
-    private:
-        std::map<ns3::Ipv4Address, int> m_clientSessionByAddress;                 //!< maps Client Address to Client id
-        std::map<int, std::shared_ptr<ClientSession> > &m_clientSessionById;      //!< maps client id to client session
-        int m_nInRound;                                                           //!< number of clients in round
-        int m_nInRoundFirstCycleDone;                                             //!< number of clients with first cycle done
-
-    };
 
 }
 #endif

@@ -43,9 +43,13 @@ class Record(object):
         self.dropout.append(dropout)
 
     def get_latest_t(self):
+        if not self.t:    # 如果列表為空
+            return 0.0    # 返回默認值
         return self.t[-1]
 
     def get_latest_acc(self):
+        if not self.acc:  # 如果列表為空
+            return 0.0    # 返回默認值
         return self.acc[-1]
 
     def save_record(self, filename):

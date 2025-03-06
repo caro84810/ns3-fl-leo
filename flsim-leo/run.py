@@ -17,7 +17,14 @@ args = parser.parse_args()
 
 # Set logging
 logging.basicConfig(
-    format='[%(levelname)s][%(asctime)s]: %(message)s', level=getattr(logging, args.log.upper()), datefmt='%H:%M:%S')
+    filename='run.log',
+    #format='[%(levelname)s][%(asctime)s]: %(message)s', 
+    #level=getattr(logging, args.log.upper()), 
+    #datefmt='%H:%M:%S'
+    level=logging.DEBUG,  # 設置為DEBUG級別以獲取最詳細的日誌
+    
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 
 def main():

@@ -1,23 +1,3 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
-/*
- * Copyright (c) 2022 Emily Ekaireb
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * Author: Emily Ekaireb <eekaireb@ucsd.edu>
- */
-
 #ifndef IOT_EXPERIMENT_H
 #define IOT_EXPERIMENT_H
 
@@ -49,29 +29,23 @@ namespace ns3 {
   */
     class Experiment {
     public:
-        /**
-        * \brief Constructs Experiment
-        * \param numClients      Number of clients in experiment
-        * \param networkType     Network type (wifi or ethernet)
-        * \param maxPacketSize   Max packet size for network
-        * \param txGain          TX gain for wifi network
-        * \param modelSize       Model size
-        * \param dataRate        Datarate for server
-        * \param bAsync          If running async experiment, true
-        * \param pflSymProvider  pointer to an fl-sim-interface (used to communicate with flsim)
-        */
         Experiment(int numClients, std::string &networkType, int maxPacketSize, double txGain, double modelSize,
-                   std::string &dataRate, bool bAsync, FLSimProvider *pflSymProvider, FILE *fp, int round);
-
-        /**
-        * \brief Runs network experiment
-        * \param packetsReceived   map of <client, client sessions>
-        * \param timeOffset        Async, make timeline between rounds continious
-        * \return                  map of <client id, message>, messages to send back to flsim for each client
-        */
+                   std::string &dataRate, bool bAsync, FLSimProvider *pflSymProvider, FILE *fp, int round);       
+        
         //TODO: Change to run and change packet recieved
         std::map<int, FLSimProvider::Message>
         WeakNetwork(std::map<int, std::shared_ptr<ClientSession> > &packetsReceived, ns3::Time &timeOffset);
+        
+        /*********ISL修改部份**********/
+        
+        // 衛星可見性判斷方法
+        bool IsSatelliteVisible(const Vector &pos1, const Vector &pos2) const;
+        double CalculateDistanceToLine(const Vector &point, const Vector &line_start, const Vector &line_end) const;
+        double DotProduct(const Vector &a, const Vector &b) const;
+    
+    // ISL數據率和延遲計算
+        double CalculateISLDataRate(double distance) const;
+        
 
     private:
         /**
@@ -109,6 +83,25 @@ namespace ns3 {
         FLSimProvider *m_flSymProvider;   //!< pointer to an fl-sim-interface (used to communicate with flsim)
         FILE *m_fp;                       //!< pointer to logfile
         int m_round;                      //!< experiment round
+        const char **strings;
+        // LEO網路相關函數
+        NetDeviceContainer Leo(NodeContainer &c, std::map<int, std::shared_ptr<ClientSession> > &clients);
+    
+        // LEO網路計算函數
+        double CalculateDistance(const Vector &a, const Vector &b) const;
+        double CalculateDelay(double distance) const;
+        double CalculateDataRate(double distance) const;
+
+        // LEO網路配置參數
+        static constexpr double LEO_ALTITUDE = 550.0;  // Starlink衛星高度(km)
+        static constexpr double LIGHT_SPEED = 3e5;     // 光速(km/s)
+        static constexpr double BASE_DATARATE = 2.2;   // 基礎數據率(Gbps)
+        
+         // ISL相關常量
+         static constexpr double EARTH_RADIUS = 6371.0;  // 地球半徑(km)
+         static constexpr double MAX_ISL_RANGE = 5000.0; // 最大ISL通信距離(km)
+         static constexpr double ISL_BASE_DATARATE = 2.2; // 基本ISL數據率(Gbps)
+
     };
 }
 

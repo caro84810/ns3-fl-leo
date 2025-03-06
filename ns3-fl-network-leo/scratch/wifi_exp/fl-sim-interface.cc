@@ -1,26 +1,8 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
-/*
- * Copyright (c) 2022 Emily Ekaireb
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * Author: Emily Ekaireb <eekaireb@ucsd.edu>
- */
 #include "fl-sim-interface.h"
 
 namespace ns3 {
     void FLSimProvider::waitForConnection() {
+    NS_LOG_UNCOND("===== 函數名: " << __FUNCTION__ << " =====");
         m_server_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (m_server_fd < 0) {
             NS_LOG_UNCOND("Could not create a socket");
@@ -103,15 +85,42 @@ namespace ns3 {
         COMMAND r;
         r.command = COMMAND::Type::RESPONSE;
         r.nItems = 1;
-        write(m_new_socket, (char *) &r, sizeof(r));
-        write(m_new_socket, pMessage, sizeof(AsyncMessage));
+        // 將消息寫入前先進行日誌記錄
+    NS_LOG_UNCOND("Sending async message to Python: id=" << pMessage->id 
+                 << ", startTime=" << pMessage->startTime
+                 << ", endTime=" << pMessage->endTime 
+                 << ", throughput=" << pMessage->throughput);
+    
+    // 發送命令頭
+    ssize_t written = write(m_new_socket, (char *) &r, sizeof(r));
+    if (written != sizeof(r)) {
+        NS_LOG_UNCOND("Error writing command to socket: wrote " << written << " bytes, expected " << sizeof(r));
+        return;
+    }
+    
+    // 發送消息內容
+    written = write(m_new_socket, pMessage, sizeof(AsyncMessage));
+    if (written != sizeof(AsyncMessage)) {
+        NS_LOG_UNCOND("Error writing message to socket: wrote " << written << " bytes, expected " << sizeof(AsyncMessage));
+    } else {
+        NS_LOG_UNCOND("Successfully sent " << written << " bytes of async message");
+    }
     }
 
     void FLSimProvider::end() {
         COMMAND r;
         r.command = COMMAND::Type::ENDSIM;
         r.nItems = 0;
-        write(m_new_socket, (char *) &r, sizeof(r));
+        
+        NS_LOG_UNCOND("Sending ENDSIM command to Python");
+    
+        // 發送終止命令
+        ssize_t written = write(m_new_socket, (char *) &r, sizeof(r));
+        if (written != sizeof(r)) {
+            NS_LOG_UNCOND("Error writing ENDSIM command: wrote " << written << " bytes, expected " << sizeof(r));
+        } else {
+            NS_LOG_UNCOND("Successfully sent ENDSIM command");
+        }
     }
 
 

@@ -107,33 +107,53 @@ class AsyncServer(Server):
 
     def async_round(self, round, T_old, network, f):
         """Run one async round for T_async"""
+        logging.info("開始第%d輪訓練，時間點T_old=%f", round, T_old)
         import fl_model  # pylint: disable=import-error
         target_accuracy = self.config.fl.target_accuracy
+         
+        # 初始化throughput屬性，確保它始終存在
+        self.throughput = 0.0
+        throughputs = []
+        
+        # 初始化返回值的默認值
+        default_accuracy = 0.0
+        T_new = T_old
 
-        # Select clients to participate in the round
+        # 選擇參加本輪的客戶端
         sample_clients = self.selection()
+        logging.info("選擇了%d個客戶端: %s", len(sample_clients), [c.client_id for c in sample_clients])
 
-        # Send selected clients to ns-3
-        parsed_clients = network.parse_clients(sample_clients)
+        
+        # 發送網路請求
+        parsed_clients = network.parse_clients(sample_clients)       
         network.sendAsyncRequest(requestType=1, array=parsed_clients)
-
+        logging.info("已發送網絡請求，客戶端陣列: %s", parsed_clients)
+	
+	#創建客戶端的映射
         id_to_client = {}
         client_finished = {}
         for client in sample_clients:
             id_to_client[client.client_id] = (client, T_old)
             client_finished[client.client_id] = False
+            logging.debug("映射客戶端ID %d -> 客戶端對象", client.client_id)
 
-        T_new = T_old
-        throughputs = []
+        # 處理客戶端數據或模擬結束
+        processed_any_client = False
+        
         # Start the asynchronous updates
+        processed_count = 0
         while True:
+            logging.info('等待NS3回應...')
             simdata = network.readAsyncResponse()
-
+           
             if simdata != 'end':
                 #get the client/group based on the id, use map
+                
+                processed_any_client = True
                 client_id = -1
                 for key in simdata:
                     client_id = key
+                    logging.info('處理客戶端 %d 的數據', client_id)
 
                 select_client = id_to_client[client_id][0]
                 select_client.delay = simdata[client_id]["endTime"]
@@ -192,12 +212,21 @@ class AsyncServer(Server):
                     logging.info('Target accuracy reached.')
                     break
             elif simdata == 'end':
+                logging.info('收到NS3的ENDSIM命令')           
+                # self.throughput = 0.0
+                # 添加默認的精度記錄，避免 record.py 中的索引錯誤
+                # 使用預設精度值 0.0（或其他合適的默認值）
+                if not processed_any_client and hasattr(self, 'records'):
+                    logging.info('No client data processed, adding default record')
+                    self.records.async_time_graphs(T_old, default_accuracy, self.throughput)
                 break
 
-
+        # 輸出輪次持續時間和吞吐量
         logging.info('Round lasts {} secs, avg throughput {} kB/s'.format(
             T_new, self.throughput
         ))
+        
+        # 計算未完成的客戶端數
         cnt = 0
         for c in client_finished:
             if not client_finished[c]:
@@ -205,9 +234,16 @@ class AsyncServer(Server):
                 f.write(str(c))
                 f.write('\n')
                 f.flush()
-
+	# 即使沒有處理任何客戶端，仍然記錄輪次圖表
         self.records.async_round_graphs(round, cnt)
-        return self.records.get_latest_acc(), self.records.get_latest_t()
+         
+        # 使用防禦性代碼獲取最新值
+        try:
+            return self.records.get_latest_acc(), self.records.get_latest_t()
+             
+        except (IndexError, AttributeError):
+            logging.warning('Failed to get latest records, returning defaults')
+            return default_accuracy, T_new
 
 
     def selection(self):
@@ -270,7 +306,25 @@ class AsyncServer(Server):
             client.async_configure(config, download_time)
 
     def aggregation(self, reports, staleness=None):
-        return self.federated_async(reports, staleness)
+    # 對於LEO網絡，可能需要調整staleness的處理
+        if self.config.network.type == 'leo':
+            # 對LEO網絡下的staleness特殊處理
+            # 例如適當降低staleness懲罰
+            if self.staleness_func == "polynomial":
+                a = 0.3  # 降低因子，原始值為0.5
+                return pow(staleness+1, -a)
+        # 原始實現保持不變
+        if self.staleness_func == "constant":
+            return 1
+        elif self.staleness_func == "polynomial":
+            a = 0.5
+            return pow(staleness+1, -a)
+        elif self.staleness_func == "hinge":
+            a, b = 10, 4
+            if staleness <= b:
+                return 1
+            else:
+                return 1 / (a * (staleness - b) + 1)
 
     def extract_client_weights(self, reports):
         # Extract weights from reports
