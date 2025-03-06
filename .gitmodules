@@ -1,6 +1,6 @@
 [submodule "ns3-fl-network"]
 	path = ns3-fl-network
-	url = git@github.com:eekaireb/ns3-fl-network.git
+	url = https://github.com/caro84810/ns3-fl-network-leo.git
 [submodule "flsim"]
 	path = flsim
-	url = git@github.com:eekaireb/flsim.git
+	url = https://github.com/caro84810/flsim-leo.git
